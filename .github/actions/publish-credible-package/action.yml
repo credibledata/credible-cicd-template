@@ -1,0 +1,17 @@
+name: Publish Credible Package
+description: Publishes a single package using Cred CLI.
+
+inputs:
+  package_path: { required: true }
+  set_latest: { required: false, default: "false" }
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: |
+        set -Eeuo pipefail
+        chmod +x scripts/cred_publish_pkg.sh
+        flag=""
+        if [ "${{ inputs.set_latest }}" = "true" ]; then flag="-L"; fi
+        scripts/cred_publish_pkg.sh -d "${{ inputs.package_path }}" $flag

@@ -1,0 +1,40 @@
+name: Bump Package Versions
+on:
+  workflow_call:
+    outputs:
+      bumped:
+        description: "List of bumped packages"
+        value: ${{ jobs.bump.outputs.bumped }}
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    outputs:
+      bumped: ${{ steps.bump.outputs.bumped }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: ./.github/actions/setup-github-app
+        id: app
+        with:
+          app_id: ${{ secrets.CREDIBLE_BOT_APP_ID }}
+          private_key: ${{ secrets.CREDIBLE_BOT_APP_PRIVATE_KEY }}
+
+      - name: Install tools
+        run: |
+          sudo apt-get update -y && sudo apt-get install -y jq
+          npm i -g @ms2data/cred-cli
+
+      - id: bump
+        run: |
+          chmod +x scripts/detect_changed_packages.py scripts/bump_versions.py
+          pkgs="$(scripts/detect_changed_packages.py ${{ github.event.before }} ${{ github.sha }})"
+          bumped="$(scripts/bump_versions.py $pkgs)"
+          echo "bumped=$bumped" >> $GITHUB_OUTPUT
+
+      - uses: ./.github/actions/auto-commit-pr
+        with:
+          token: ${{ steps.app.outputs.token }}

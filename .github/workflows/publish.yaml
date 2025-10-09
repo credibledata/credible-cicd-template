@@ -1,0 +1,21 @@
+name: Publish Packages (Credible CLI)
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  bump:
+    uses: ./.github/workflows/bump-package-versions.yml
+
+  publish-staging:
+    needs: bump
+    uses: ./.github/workflows/publish-staging.yml
+    with:
+      packages: ${{ needs.bump.outputs.bumped }}
+
+  publish-prod:
+    needs: publish-staging
+    uses: ./.github/workflows/publish-prod.yml
+    with:
+      packages: ${{ needs.bump.outputs.bumped }}

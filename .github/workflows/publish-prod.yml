@@ -1,0 +1,45 @@
+name: Publish to Production
+
+on:
+  workflow_call:
+    inputs:
+      packages:
+        required: true
+        type: string
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y jq
+          npm install -g @ms2data/cred-cli
+
+      - name: Publish packages to production
+        shell: bash
+        env:
+          ACCESS_TOKEN:      ${{ secrets.AUTH0_ACCESS_TOKEN }}
+          ORGANIZATION_NAME: ${{ vars.CRED_ORG }}
+          PROJECT_NAME:      ${{ vars.CRED_PROD_PROJECT }}
+          ENVIRONMENT:       ${{ vars.CRED_PROD_ENV }}
+        run: |
+          chmod +x scripts/cred_publish_combined.sh
+          pkgs="${{ inputs.packages }}"
+
+          for item in $pkgs; do
+            IFS="|" read -r path name version <<< "$item"
+            echo "[production] Publishing $name@$version from $path"
+            scripts/cred_publish_combined.sh \
+              -e "$ENVIRONMENT" \
+              -o "$ORGANIZATION_NAME" \
+              -P "$PROJECT_NAME" \
+              -a "$ACCESS_TOKEN" \
+              -d "$path"
+          done
