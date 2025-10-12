@@ -2,6 +2,7 @@ name: Bump Package Versions
 
 on:
   workflow_call:
+    inputs:
     secrets:
       app_id:
         required: true
@@ -105,6 +106,28 @@ jobs:
           echo "$bumped" >> $GITHUB_STEP_SUMMARY
           echo "Bumped packages (for deployment): $bumped"
 
-      - uses: ./.github/actions/auto-commit
-        with:
-          token: ${{ steps.app.outputs.token }}
+      - name: Auto Commit Bumped Versions
+        env:
+          GITHUB_TOKEN: ${{ steps.app.outputs.token }}
+        run: |
+          set -Eeuo pipefail
+          
+          # Configure git to use the token
+          git config user.name "credible-bot[bot]"
+          git config user.email "credible-bot[bot]@users.noreply.github.com"
+          
+          # Add and commit changes
+          git add -A
+          
+          # Check if there are changes to commit
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          
+          git commit -m "chore: auto-bump package versions [skip ci]"
+
+          git pull --rebase
+          
+          # Push directly to main using the token
+          git push https://x-access-token:${{ steps.app.outputs.token }}@github.com/${{ github.repository }}.git HEAD:${{github.ref_name}}

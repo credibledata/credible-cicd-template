@@ -1,0 +1,36 @@
+name: Bump and Publish Packages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/**'
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    if: github.event.head_commit.author.name != 'credible-bot[bot]' && !contains(github.event.head_commit.message, 'auto-bump')
+    uses: ./.github/workflows/bump-package-versions.yml
+    secrets:
+      app_id: ${{ secrets.CICD_BOT_APP_ID }}
+      private_key: ${{ secrets.CICD_BOT_APP_PRIVATE_KEY }}
+
+  publish:
+    needs: bump
+    if: needs.bump.outputs.bumped != ''
+    uses: ./.github/workflows/publish-packages.yml
+    with:
+      packages: ${{ needs.bump.outputs.bumped }}
+      set_latest: ${{ vars.SET_LATEST == 'false' && false || true }}
+    secrets:
+      jwt_access_token: ${{ secrets.JWT_ACCESS_TOKEN }}
+      cred_org: ${{ vars.CRED_ORG }}
+      cred_project: ${{ vars.CRED_PROJECT }}

@@ -1,0 +1,169 @@
+name: Publish Packages
+
+on:
+  workflow_call:
+    inputs:
+      packages:
+        description: "Space-separated list of packages to publish (format: path|name|version)"
+        required: true
+        type: string
+      set_latest:
+        description: "Whether to set as latest version"
+        required: false
+        type: boolean
+        default: true
+    secrets:
+      jwt_access_token:
+        required: true
+      cred_org:
+        required: true
+      cred_project:
+        required: true
+    outputs:
+      published_count:
+        description: "Number of successfully published packages"
+        value: ${{ jobs.publish.outputs.published_count }}
+      failed_packages:
+        description: "List of packages that failed to publish"
+        value: ${{ jobs.publish.outputs.failed_packages }}
+      success:
+        description: "Whether all packages were published successfully"
+        value: ${{ jobs.publish.outputs.success }}
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    outputs:
+      published_count: ${{ steps.publish.outputs.published_count }}
+      failed_packages: ${{ steps.publish.outputs.failed_packages }}
+      success: ${{ steps.publish.outputs.success }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y jq
+          npm install -g @ms2data/cred-cli
+
+      - name: Publish packages with retry logic
+        id: publish
+        shell: bash
+        env:
+          ACCESS_TOKEN: ${{ secrets.jwt_access_token }}
+          ORGANIZATION_NAME: ${{ secrets.cred_org }}
+          PROJECT_NAME: ${{ secrets.cred_project }}
+          SET_LATEST: ${{ inputs.set_latest }}
+        run: |
+          set -Eeuo pipefail
+          chmod +x scripts/cred_publish.sh
+          
+          pkgs="${{ inputs.packages }}"
+          pkgs=$(echo "$pkgs" | xargs)
+
+          if [ -z "$pkgs" ]; then
+            echo "No packages to publish"
+            echo "published_count=0" >> $GITHUB_OUTPUT
+            echo "failed_packages=" >> $GITHUB_OUTPUT
+            echo "success=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          failed_packages=""
+          published_count=0
+          total_packages=$(echo "$pkgs" | wc -w)
+          
+          echo "### Publishing $total_packages package(s)" >> $GITHUB_STEP_SUMMARY
+
+          for item in $pkgs; do
+            IFS="|" read -r path name version <<< "$item"
+
+            echo ""
+            echo "================================================"
+            echo "Publishing: $name@$version"
+            echo "================================================"
+
+            # Retry configuration
+            max_attempts=3
+            attempt=1
+            success=false
+
+            while [ $attempt -le $max_attempts ]; do
+              echo "Attempt $attempt of $max_attempts for $name@$version"
+
+              # Build command based on SET_LATEST flag
+              if [ "$SET_LATEST" = "true" ]; then
+                publish_cmd="scripts/cred_publish.sh -o \"$ORGANIZATION_NAME\" -P \"$PROJECT_NAME\" -a \"$ACCESS_TOKEN\" -d \"$path\" -L"
+              else
+                publish_cmd="scripts/cred_publish.sh -o \"$ORGANIZATION_NAME\" -P \"$PROJECT_NAME\" -a \"$ACCESS_TOKEN\" -d \"$path\""
+              fi
+
+              # Execute publish
+              if eval $publish_cmd; then
+                echo "- **$name@$version** - Published successfully" >> $GITHUB_STEP_SUMMARY
+                success=true
+                published_count=$((published_count + 1))
+                break
+              else
+                echo "Attempt $attempt failed for $name@$version"
+                
+                # Wait before retry (exponential backoff)
+                if [ $attempt -lt $max_attempts ]; then
+                  wait_time=$((5 * 2 ** (attempt - 1)))
+                  echo "Waiting ${wait_time}s before retry..."
+                  sleep $wait_time
+                fi
+              fi
+
+              attempt=$((attempt + 1))
+            done
+
+            # Check if all retries failed
+            if [ "$success" = false ]; then
+              echo "::error::Failed to publish $name@$version after $max_attempts attempts"
+              echo "- **$name@$version** - Failed after $max_attempts attempts" >> $GITHUB_STEP_SUMMARY
+              failed_packages="$failed_packages $name@$version"
+            fi
+          done
+
+          echo ""
+          echo "================================================"
+          echo "Publishing Summary"
+          echo "================================================"
+          echo "Total packages: $total_packages"
+          echo "Successfully published: $published_count"
+          echo "Failed: $((total_packages - published_count))"
+
+          # Add summary
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Summary:** $published_count/$total_packages packages published successfully" >> $GITHUB_STEP_SUMMARY
+
+          # Set outputs
+          echo "published_count=$published_count" >> $GITHUB_OUTPUT
+          echo "failed_packages=$failed_packages" >> $GITHUB_OUTPUT
+
+          # Fail the workflow if any package failed
+          if [ -n "$failed_packages" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Failed Packages" >> $GITHUB_STEP_SUMMARY
+            echo "The following packages failed to publish:$failed_packages" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Next Steps:**" >> $GITHUB_STEP_SUMMARY
+            echo "1. Check the logs above for error details" >> $GITHUB_STEP_SUMMARY
+            echo "2. Fix any issues and push a new commit" >> $GITHUB_STEP_SUMMARY
+            echo "3. The workflow will automatically retry publishing these packages" >> $GITHUB_STEP_SUMMARY
+            
+            echo "success=false" >> $GITHUB_OUTPUT
+            echo "::error::Failed to publish packages:$failed_packages"
+            exit 1
+          fi
+
+          echo "success=true" >> $GITHUB_OUTPUT
+          echo "All packages published successfully!"
