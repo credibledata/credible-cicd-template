@@ -3,19 +3,77 @@ name: Publish Packages (Credible CLI)
 on:
   push:
     branches: [main]
+    paths:
+      - 'packages/**'
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   bump:
+    if: github.event.head_commit.author.name != 'credible-bot[bot]' && !contains(github.event.head_commit.message, 'auto-bump')
     uses: ./.github/workflows/bump-package-versions.yml
+    secrets:
+      app_id: ${{ secrets.CICD_BOT_APP_ID }}
+      private_key: ${{ secrets.CICD_BOT_APP_PRIVATE_KEY }}
 
-  publish-staging:
+  publish:
     needs: bump
-    uses: ./.github/workflows/publish-staging.yml
-    with:
-      packages: ${{ needs.bump.outputs.bumped }}
+    if: needs.bump.outputs.bumped != ''
+    runs-on: ubuntu-latest
 
-  publish-prod:
-    needs: publish-staging
-    uses: ./.github/workflows/publish-prod.yml
-    with:
-      packages: ${{ needs.bump.outputs.bumped }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.ref_name }}
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y jq
+          npm install -g @ms2data/cred-cli
+
+      - name: Publish packages dynamically
+        shell: bash
+        env:
+          ACCESS_TOKEN:      ${{ secrets.JWT_ACCESS_TOKEN }}
+          ORGANIZATION_NAME: ${{ vars.CRED_ORG }}
+          PROJECT_NAME:      ${{ vars.CRED_PROJECT }}
+          SET_LATEST:        ${{ vars.SET_LATEST || 'true' }}
+        run: |
+          chmod +x scripts/cred_publish.sh
+          pkgs="${{ needs.bump.outputs.bumped}}"
+          pkgs=$(echo "$pkgs" | xargs)
+
+          if [ -z "$pkgs" ]; then
+            echo "No packages to publish"
+            exit 0
+          fi
+
+          for item in $pkgs; do
+            IFS="|" read -r path name version <<< "$item"
+
+            echo "Publishing package: $name@$version"
+
+            if [ "$SET_LATEST" = "true" ]; then
+              scripts/cred_publish.sh \
+                -o "$ORGANIZATION_NAME" \
+                -P "$PROJECT_NAME" \
+                -a "$ACCESS_TOKEN" \
+                -d "$path" \
+                -L
+            else
+              scripts/cred_publish.sh \
+                -o "$ORGANIZATION_NAME" \
+                -P "$PROJECT_NAME" \
+                -a "$ACCESS_TOKEN" \
+                -d "$path"
+            fi
+          done

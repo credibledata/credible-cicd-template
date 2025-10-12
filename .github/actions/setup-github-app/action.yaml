@@ -12,7 +12,7 @@ outputs:
     value: ${{ steps.app-token.outputs.token }}
 
 runs:
-  using: composite
+  using: "composite"
   steps:
     - id: app-token
       uses: actions/create-github-app-token@v1

@@ -1,40 +1,110 @@
 name: Bump Package Versions
+
 on:
   workflow_call:
+    secrets:
+      app_id:
+        required: true
+      private_key:
+        required: true
     outputs:
       bumped:
-        description: "List of bumped packages"
+        description: "List of all packages to deploy (bumped + already bumped)"
         value: ${{ jobs.bump.outputs.bumped }}
+      changed:
+        description: "Whether any package was changed"
+        value: ${{ jobs.bump.outputs.changed }}
+      to_bump:
+        description: "List of packages that required bump"
+        value: ${{ jobs.bump.outputs.to_bump }}
+      already_bumped:
+        description: "List of packages already version-bumped"
+        value: ${{ jobs.bump.outputs.already_bumped }}
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
 
 jobs:
   bump:
     runs-on: ubuntu-latest
     outputs:
       bumped: ${{ steps.bump.outputs.bumped }}
+      changed: ${{ steps.bump.outputs.changed }}
+      to_bump: ${{ steps.bump.outputs.to_bump }}
+      already_bumped: ${{ steps.bump.outputs.already_bumped }}
 
     steps:
+      - uses: actions/create-github-app-token@v1
+        id: app
+        with:
+          app-id: ${{ secrets.app_id }}
+          private-key: ${{ secrets.private_key }}
+
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - uses: ./.github/actions/setup-github-app
-        id: app
-        with:
-          app_id: ${{ secrets.CREDIBLE_BOT_APP_ID }}
-          private_key: ${{ secrets.CREDIBLE_BOT_APP_PRIVATE_KEY }}
+          token: ${{ steps.app.outputs.token }}
 
       - name: Install tools
         run: |
-          sudo apt-get update -y && sudo apt-get install -y jq
-          npm i -g @ms2data/cred-cli
+          sudo apt-get update -y
+          sudo apt-get install -y jq
 
-      - id: bump
+      - name: Detect and bump package versions
+        id: bump
         run: |
+          set -Eeuo pipefail
           chmod +x scripts/detect_changed_packages.py scripts/bump_versions.py
-          pkgs="$(scripts/detect_changed_packages.py ${{ github.event.before }} ${{ github.sha }})"
-          bumped="$(scripts/bump_versions.py $pkgs)"
-          echo "bumped=$bumped" >> $GITHUB_OUTPUT
 
-      - uses: ./.github/actions/auto-commit-pr
+          base="${{ github.event.before }}"
+          head="${{ github.sha }}"
+
+          echo "Detecting changed packages..."
+          out=$(scripts/detect_changed_packages.py "$base" "$head")
+
+          to_bump=$(echo "$out" | grep '^TO_BUMP=' | cut -d= -f2- | xargs)
+          already_bumped=$(echo "$out" | grep '^ALREADY_BUMPED=' | cut -d= -f2- | xargs)
+
+          echo "TO_BUMP=$to_bump"
+          echo "ALREADY_BUMPED=$already_bumped"
+
+          if [ -z "$to_bump" ] && [ -z "$already_bumped" ]; then
+            echo "No changed packages detected; skipping bump."
+            echo "### No changed packages detected — skipping bump" >> $GITHUB_STEP_SUMMARY
+            echo "bumped=" >> $GITHUB_OUTPUT
+            echo "to_bump=" >> $GITHUB_OUTPUT
+            echo "already_bumped=" >> $GITHUB_OUTPUT
+            echo "changed=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          bumped=""
+          if [ -n "$to_bump" ]; then
+            echo "Bumping versions for: $to_bump"
+            bumped="$(scripts/bump_versions.py $to_bump)"
+          fi
+
+          # Combine bumped + already bumped for deployment
+          if [ -n "$already_bumped" ]; then
+            for pkg in $already_bumped; do
+              # Read current version from publisher.json
+              name=$(jq -r '.name' "$pkg/publisher.json" 2>/dev/null || echo "$(basename $pkg)")
+              version=$(jq -r '.version' "$pkg/publisher.json" 2>/dev/null || echo "unknown")
+              bumped="$bumped $pkg|$name|$version"
+            done
+          fi
+
+          echo "bumped=$bumped" >> $GITHUB_OUTPUT
+          echo "to_bump=$to_bump" >> $GITHUB_OUTPUT
+          echo "already_bumped=$already_bumped" >> $GITHUB_OUTPUT
+          echo "changed=true" >> $GITHUB_OUTPUT
+
+          echo "### Bumped Packages" >> $GITHUB_STEP_SUMMARY
+          echo "$bumped" >> $GITHUB_STEP_SUMMARY
+          echo "Bumped packages (for deployment): $bumped"
+
+      - uses: ./.github/actions/auto-commit
         with:
           token: ${{ steps.app.outputs.token }}
