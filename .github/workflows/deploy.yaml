@@ -30,7 +30,7 @@ jobs:
     with:
       packages: ${{ needs.bump.outputs.bumped }}
       set_latest: ${{ vars.SET_LATEST == 'false' && false || true }}
-    secrets:
-      jwt_access_token: ${{ secrets.JWT_ACCESS_TOKEN }}
       cred_org: ${{ vars.CRED_ORG }}
       cred_project: ${{ vars.CRED_PROJECT }}
+    secrets:
+      jwt_access_token: ${{ secrets.JWT_ACCESS_TOKEN }}

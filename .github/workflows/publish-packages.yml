@@ -12,12 +12,16 @@ on:
         required: false
         type: boolean
         default: true
-    secrets:
-      jwt_access_token:
-        required: true
       cred_org:
+        description: "Credible organization"
+        type: string
         required: true
       cred_project:
+        description: "Credible project"
+        type: string
+        required: true
+    secrets:
+      jwt_access_token:
         required: true
     outputs:
       published_count:
@@ -59,8 +63,8 @@ jobs:
         shell: bash
         env:
           ACCESS_TOKEN: ${{ secrets.jwt_access_token }}
-          ORGANIZATION_NAME: ${{ secrets.cred_org }}
-          PROJECT_NAME: ${{ secrets.cred_project }}
+          ORGANIZATION_NAME: ${{ inputs.cred_org }}
+          PROJECT_NAME: ${{ inputs.cred_project }}
           SET_LATEST: ${{ inputs.set_latest }}
         run: |
           set -Eeuo pipefail
