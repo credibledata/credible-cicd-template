@@ -12,6 +12,28 @@ def git_diff_names(base, head):
         return []
     return [l.strip() for l in r.stdout.splitlines() if l.strip()]
 
+def find_package_root(file_path: Path) -> Path | None:
+    """
+    Walk up from file path to find the directory containing publisher.json.
+    Returns the package root directory or None if not found.
+    """
+    current = file_path.parent if file_path.is_file() else file_path
+    
+    # Walk up the directory tree
+    while len(current.parts) > 0:
+        publisher = current / "publisher.json"
+        if publisher.exists():
+            return current
+        
+        # Stop if we've left the packages directory
+        if "packages" not in current.parts:
+            break
+            
+        # Move up one level
+        current = current.parent
+    
+    return None
+
 def publisher_version_changed(pkg_dir: Path, base: str, head: str) -> bool:
     """Check if publisher.json diff contains a 'version' key change."""
     p = pkg_dir / "publisher.json"
@@ -41,9 +63,16 @@ def main():
     pkgs = set()
     for f in changed:
         if f.startswith("packages/"):
-            parts = Path(f).parts
-            if len(parts) >= 2:
-                pkgs.add(Path(parts[0]) / parts[1])
+            file_path = Path(f)
+            
+            # Find the package root by looking for publisher.json
+            pkg_root = find_package_root(file_path)
+            
+            if pkg_root:
+                print(f"[detected] {f} → package: {pkg_root}")
+                pkgs.add(pkg_root)
+            else:
+                print(f"[skip] {f} → no publisher.json found in parent directories")
 
     to_bump, already_bumped = [], []
 
