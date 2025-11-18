@@ -72,7 +72,15 @@ failed_count=0
 failed_packages=""
 max_attempts=3
 
-for item in $PACKAGES; do
+# Handle package names with spaces by splitting on " packages/" pattern
+# This assumes all package paths start with "packages/"
+# Convert space-separated items to newline-separated (split before each "packages/")
+PACKAGES_ARRAY=$(echo "$PACKAGES" | sed 's/ packages\//\npackages\//g')
+
+while IFS= read -r item; do
+  # Skip empty lines
+  [ -z "$item" ] && continue
+  
   IFS="|" read -r path name version <<< "$item"
   
   echo "════════════════════════════════════════════════"
@@ -179,7 +187,7 @@ for item in $PACKAGES; do
 
   popd >/dev/null
   echo ""
-done
+done <<< "$PACKAGES_ARRAY"
 
 echo "════════════════════════════════════════════════"
 echo "PUBLISH SUMMARY"

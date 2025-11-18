@@ -63,9 +63,6 @@ jobs:
           set -Eeuo pipefail
           chmod +x scripts/cred_publish.sh
 
-          # Remove whitespace from packages input
-          PACKAGES=$(echo "$PACKAGES" | sed 's/ //g')
-
           # Validate packages input
           if [ -z "$PACKAGES" ]; then
             echo "No packages to publish"

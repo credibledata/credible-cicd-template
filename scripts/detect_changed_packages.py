@@ -35,19 +35,41 @@ def find_package_root(file_path: Path) -> Path | None:
     return None
 
 def publisher_version_changed(pkg_dir: Path, base: str, head: str) -> bool:
-    """Check if publisher.json diff contains a 'version' key change."""
+    """Check if the version VALUE actually changed in publisher.json."""
+    import json
+    
     p = pkg_dir / "publisher.json"
     if not p.exists():
         return False
 
-    r = run(["git", "diff", f"{base}..{head}", "--", str(p)])
-    if r.returncode != 0 or not r.stdout.strip():
+    # Get old version from base commit
+    old = run(["git", "show", f"{base}:{p}"])
+    if old.returncode != 0:
+        # File didn't exist in base commit (new package)
         return False
+    
+    # Get new version from head commit
+    new = run(["git", "show", f"{head}:{p}"])
+    if new.returncode != 0:
+        # File doesn't exist in head (deleted)
+        return False
+    
+    try:
+        old_data = json.loads(old.stdout)
+        new_data = json.loads(new.stdout)
+        
+        old_version = old_data.get("version", "")
+        new_version = new_data.get("version", "")
 
-    for line in r.stdout.splitlines():
-        if line.strip().startswith(("+", "-")) and '"version"' in line:
-            return True
-    return False
+        old_name = old_data.get("name", "").lower()
+        new_name = new_data.get("name", "").lower()
+        
+        # Only return True if the version VALUE actually changed
+        return old_version != new_version or old_name != new_name
+    except (json.JSONDecodeError, KeyError):
+        # If we can't parse JSON, assume no version change
+        # (bump will handle it or fail appropriately)
+        return False
 
 def main():
     base = sys.argv[1] if len(sys.argv) > 1 else ""
