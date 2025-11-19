@@ -17,7 +17,12 @@ concurrency:
 
 jobs:
   bump:
-    if: github.event.head_commit.author.name != 'credible-bot[bot]' && !contains(github.event.head_commit.message, 'auto-bump')
+    # Prevent infinite loop: skip if commit is from bot (check both name and email)
+    if: |
+      github.event.head_commit.author.name != 'credible-bot[bot]' &&
+      !contains(github.event.head_commit.author.email, '[bot]@users.noreply.github.com') &&
+      !contains(github.event.head_commit.message, 'auto-bump') &&
+      !contains(github.event.head_commit.message, '[skip ci]')
     uses: ./.github/workflows/bump-package-versions.yml
     secrets:
       app_id: ${{ secrets.CICD_BOT_APP_ID }}

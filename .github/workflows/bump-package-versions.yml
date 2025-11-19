@@ -64,8 +64,9 @@ jobs:
           echo "Detecting changed packages..."
           out=$(scripts/detect_changed_packages.py "$base" "$head")
 
-          to_bump=$(echo "$out" | grep '^TO_BUMP=' | cut -d= -f2- | xargs)
-          already_bumped=$(echo "$out" | grep '^ALREADY_BUMPED=' | cut -d= -f2- | xargs)
+          # Parse output using ||| as delimiter (handles spaces in paths)
+          to_bump=$(echo "$out" | grep '^TO_BUMP=' | cut -d= -f2-)
+          already_bumped=$(echo "$out" | grep '^ALREADY_BUMPED=' | cut -d= -f2-)
 
           echo "TO_BUMP=$to_bump"
           echo "ALREADY_BUMPED=$already_bumped"
@@ -83,16 +84,36 @@ jobs:
           bumped=""
           if [ -n "$to_bump" ]; then
             echo "Bumping versions for: $to_bump"
-            bumped="$(scripts/bump_versions.py $to_bump)"
+            # Split on ||| delimiter to handle spaces in paths
+            IFS='|||' read -ra pkg_array <<< "$to_bump"
+            bumped_list=()
+            for pkg in "${pkg_array[@]}"; do
+              [ -z "$pkg" ] && continue
+              result=$(scripts/bump_versions.py "$pkg")
+              if [ -n "$result" ]; then
+                bumped_list+=("$result")
+              fi
+            done
+            # Join results with space
+            bumped="${bumped_list[*]}"
           fi
 
           # Combine bumped + already bumped for deployment
           if [ -n "$already_bumped" ]; then
-            for pkg in $already_bumped; do
+            # Split on ||| delimiter to handle spaces in paths
+            IFS='|||' read -ra pkg_array <<< "$already_bumped"
+            for pkg in "${pkg_array[@]}"; do
+              [ -z "$pkg" ] && continue
               # Read current version from publisher.json
-              name=$(jq -r '.name' "$pkg/publisher.json" 2>/dev/null || echo "$(basename $pkg)")
-              version=$(jq -r '.version' "$pkg/publisher.json" 2>/dev/null || echo "unknown")
-              bumped="$bumped $pkg|$name|$version"
+              if [ ! -f "$pkg/publisher.json" ]; then
+                echo "[warning] Skipping $pkg - publisher.json not found"
+                continue
+              fi
+              name=$(jq -r '.name' "$pkg/publisher.json" 2>/dev/null)
+              version=$(jq -r '.version' "$pkg/publisher.json" 2>/dev/null)
+              if [ -n "$name" ] && [ -n "$version" ] && [ "$version" != "null" ]; then
+                bumped="$bumped $pkg|$name|$version"
+              fi
             done
           fi
 
@@ -109,7 +130,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ steps.app.outputs.token }}
         run: |
-          set -Eeuo pipefail
+          set -Eeu pipefail
           
           # Configure git to use the token
           git config user.name "credible-bot[bot]"
@@ -126,7 +147,45 @@ jobs:
           
           git commit -m "chore: auto-bump package versions [skip ci]"
 
-          git pull --rebase
+          # Retry push with exponential backoff to handle race conditions
+          MAX_RETRIES=5
+          RETRY_COUNT=0
+          PUSH_URL="https://x-access-token:${{ steps.app.outputs.token }}@github.com/${{ github.repository }}.git"
           
-          # Push directly to main using the token
-          git push https://x-access-token:${{ steps.app.outputs.token }}@github.com/${{ github.repository }}.git HEAD:${{github.ref_name}}
+          while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+            echo "Attempting to push (attempt $((RETRY_COUNT + 1))/$MAX_RETRIES)..."
+            
+            # Pull latest changes with rebase
+            if ! git pull --rebase origin ${{ github.ref_name }}; then
+              echo "⚠️ Rebase failed, checking for conflicts..."
+              
+              # Check if it's a conflict
+              if git status | grep -q "rebase in progress"; then
+                echo "❌ Rebase conflict detected"
+                git rebase --abort
+                RETRY_COUNT=$((RETRY_COUNT + 1))
+                SLEEP_TIME=$((2 ** RETRY_COUNT))
+                echo "Retrying in ${SLEEP_TIME}s..."
+                sleep $SLEEP_TIME
+                continue
+              fi
+            fi
+            
+            # Try to push
+            if git push "$PUSH_URL" HEAD:${{ github.ref_name }}; then
+              echo "✅ Successfully pushed version bumps"
+              exit 0
+            else
+              echo "⚠️ Push failed"
+              RETRY_COUNT=$((RETRY_COUNT + 1))
+              
+              if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+                SLEEP_TIME=$((2 ** RETRY_COUNT))
+                echo "Retrying in ${SLEEP_TIME}s..."
+                sleep $SLEEP_TIME
+              fi
+            fi
+          done
+          
+          echo "❌ Failed to push after $MAX_RETRIES attempts"
+          exit 1

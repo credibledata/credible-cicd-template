@@ -1,0 +1,41 @@
+# Security: Never commit secrets or credentials
+.env
+.env.*
+*.pem
+*.key
+secrets/
+credentials/
+
+# GitHub App private keys
+*-private-key.pem
+github-app-*.pem
+
+# Temporary files
+*.tmp
+*.log
+.DS_Store
+
+# IDE / Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Test files (not part of template)
+test_*.py
+test_*.sh
+
+# Node modules (if running cred-cli locally)
+node_modules/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# OS files
+Thumbs.db
+

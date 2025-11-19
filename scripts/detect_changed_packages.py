@@ -1,9 +1,30 @@
 #!/usr/bin/env python3
-import subprocess, sys
+import subprocess, sys, os
 from pathlib import Path
 
 def run(cmd):
     return subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False)
+
+def is_safe_path(file_path: Path, base_dir: str = "packages") -> bool:
+    """
+    Validate that the path is within the expected directory and doesn't contain path traversal.
+    Prevents attacks like: ../../etc/passwd
+    """
+    try:
+        # Convert to absolute path and resolve any .. or symlinks
+        abs_path = file_path.resolve()
+        base_path = Path(base_dir).resolve()
+        
+        # Check if the resolved path starts with the base directory
+        try:
+            abs_path.relative_to(base_path)
+            return True
+        except ValueError:
+            # Path is outside base directory
+            return False
+    except (OSError, RuntimeError):
+        # Handle errors in path resolution
+        return False
 
 def git_diff_names(base, head):
     """Return all changed file paths between two commits."""
@@ -87,10 +108,19 @@ def main():
         if f.startswith("packages/"):
             file_path = Path(f)
             
+            # Security check: validate path is safe (no traversal attacks)
+            if not is_safe_path(file_path):
+                print(f"[security] Skipping suspicious path: {f}")
+                continue
+            
             # Find the package root by looking for publisher.json
             pkg_root = find_package_root(file_path)
             
             if pkg_root:
+                # Double-check package root is also safe
+                if not is_safe_path(pkg_root):
+                    print(f"[security] Skipping suspicious package root: {pkg_root}")
+                    continue
                 print(f"[detected] {f} → package: {pkg_root}")
                 pkgs.add(pkg_root)
             else:
@@ -105,8 +135,9 @@ def main():
         else:
             to_bump.append(str(pkg_dir))
 
-    print(f"TO_BUMP={' '.join(to_bump)}")
-    print(f"ALREADY_BUMPED={' '.join(already_bumped)}")
+    # Use newline as delimiter to handle spaces in package paths
+    print(f"TO_BUMP={'|||'.join(to_bump)}")
+    print(f"ALREADY_BUMPED={'|||'.join(already_bumped)}")
 
 if __name__ == "__main__":
     main()

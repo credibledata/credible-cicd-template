@@ -50,16 +50,25 @@ fi
 echo "[setup] Organization: $ORGANIZATION_NAME"
 echo "[setup] Project: $PROJECT_NAME"
 
-# Set access token
-cred set-access-token "$ACCESS_TOKEN" -o "$ORGANIZATION_NAME"
+# Set access token (suppress output to avoid leaking in logs)
+echo "[setup] Setting access token..."
+if ! cred set-access-token "$ACCESS_TOKEN" -o "$ORGANIZATION_NAME" >/dev/null 2>&1; then
+  echo "[error] Failed to set access token"
+  exit 1
+fi
 
 # Set default project
-cred set project "$PROJECT_NAME"
+echo "[setup] Setting default project..."
+if ! cred set project "$PROJECT_NAME" >/dev/null 2>&1; then
+  echo "[error] Failed to set project: $PROJECT_NAME"
+  exit 1
+fi
 
-# Sanity check
+# Sanity check (suppress sensitive output)
 echo "[setup] Verifying credentials..."
-if ! cred status; then
+if ! cred status >/dev/null 2>&1; then
   echo "[error] Failed to authenticate with Credible CLI"
+  echo "[error] Please verify JWT_ACCESS_TOKEN, CRED_ORG, and CRED_PROJECT are correct"
   exit 1
 fi
 
