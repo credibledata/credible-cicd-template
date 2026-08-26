@@ -399,7 +399,7 @@ jobs:
         run: |
           sudo apt-get update -y
           sudo apt-get install -y jq
-          npm install -g @ms2data/cred-cli
+          npm install -g @credibledata/cred-cli
 
       - name: Publish packages
         id: publish

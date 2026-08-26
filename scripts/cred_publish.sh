@@ -44,7 +44,7 @@ fi
 
 if ! command -v cred >/dev/null 2>&1; then
   echo "[setup] Installing Credible CLI..."
-  npm install -g @ms2data/cred-cli
+  npm install -g @credibledata/cred-cli
 fi
 
 echo "[setup] Organization: $ORGANIZATION_NAME"
