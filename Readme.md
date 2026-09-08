@@ -370,6 +370,11 @@ on:
         description: "Organization name"
         required: true
         type: string
+      environment:
+        description: "GitHub Environment to bind this publish to (enables its protection rules). Optional."
+        required: false
+        type: string
+        default: ""
       cred_env:
         description: "Environment name"
         required: true

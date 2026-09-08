@@ -3,6 +3,11 @@ name: Publish Packages
 on:
   workflow_call:
     inputs:
+      environment:
+        description: "GitHub Environment to bind this publish to (enables its protection rules). Optional."
+        required: false
+        type: string
+        default: ""
       packages:
         description: "Space-separated list of packages to publish (format: path|name|version)"
         required: true
@@ -31,6 +36,7 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
 
     steps:
       - uses: actions/checkout@v4
