@@ -3,11 +3,11 @@ set -Eeuo pipefail
 
 usage() {
   cat << EOF
-Usage: $0-o <org> -P <project> -a <access_token> -p <packages> [-L]
+Usage: $0 -o <org> -E <environment> -a <access_token> -p <packages> [-L]
 
 Required:
   -o  Organization name
-  -P  Project name
+  -E  Environment name
   -a  Access token
   -p  Packages to publish (space-separated: "path|name|version path|name|version")
 
@@ -15,22 +15,22 @@ Optional:
   -L  Pass --set-latest to 'cred publish'
 
 Examples:
-  $0 -o myorg -P myproj -a token123 -p "packages/auth|auth|1.0.1"
-  $0 -o myorg -P myproj -a token123 -p "packages/auth|auth|1.0.1 packages/billing|billing|2.0.0" -L
+  $0 -o myorg -E myenv -a token123 -p "packages/auth|auth|1.0.1"
+  $0 -o myorg -E myenv -a token123 -p "packages/auth|auth|1.0.1 packages/billing|billing|2.0.0" -L
 EOF
   exit 1
 }
 
 ORGANIZATION_NAME=""
-PROJECT_NAME=""
+ENVIRONMENT_NAME=""
 ACCESS_TOKEN=""
 PACKAGES=""
 SET_LATEST=false
 
-while getopts ":e:o:P:a:p:L" opt; do
+while getopts ":o:E:a:p:L" opt; do
   case "$opt" in
     o) ORGANIZATION_NAME="$OPTARG" ;;
-    P) PROJECT_NAME="$OPTARG" ;;
+    E) ENVIRONMENT_NAME="$OPTARG" ;;
     a) ACCESS_TOKEN="$OPTARG" ;;
     p) PACKAGES="$OPTARG" ;;
     L) SET_LATEST=true ;;
@@ -38,7 +38,7 @@ while getopts ":e:o:P:a:p:L" opt; do
   esac
 done
 
-if [[ -z "$ORGANIZATION_NAME" || -z "$PROJECT_NAME" || -z "$ACCESS_TOKEN" || -z "$PACKAGES" ]]; then
+if [[ -z "$ORGANIZATION_NAME" || -z "$ENVIRONMENT_NAME" || -z "$ACCESS_TOKEN" || -z "$PACKAGES" ]]; then
   usage
 fi
 
@@ -48,7 +48,7 @@ if ! command -v cred >/dev/null 2>&1; then
 fi
 
 echo "[setup] Organization: $ORGANIZATION_NAME"
-echo "[setup] Project: $PROJECT_NAME"
+echo "[setup] Environment: $ENVIRONMENT_NAME"
 
 # Set access token (suppress output to avoid leaking in logs)
 echo "[setup] Setting access token..."
@@ -57,10 +57,10 @@ if ! cred set-access-token "$ACCESS_TOKEN" -o "$ORGANIZATION_NAME" >/dev/null 2>
   exit 1
 fi
 
-# Set default project
-echo "[setup] Setting default project..."
-if ! cred set project "$PROJECT_NAME" >/dev/null 2>&1; then
-  echo "[error] Failed to set project: $PROJECT_NAME"
+# Set default environment
+echo "[setup] Setting default environment..."
+if ! cred set environment "$ENVIRONMENT_NAME" >/dev/null 2>&1; then
+  echo "[error] Failed to set environment: $ENVIRONMENT_NAME"
   exit 1
 fi
 
@@ -68,7 +68,7 @@ fi
 echo "[setup] Verifying credentials..."
 if ! cred status >/dev/null 2>&1; then
   echo "[error] Failed to authenticate with Credible CLI"
-  echo "[error] Please verify JWT_ACCESS_TOKEN, CRED_ORG, and CRED_PROJECT are correct"
+  echo "[error] Please verify JWT_ACCESS_TOKEN, CRED_ORG, and CRED_ENV are correct"
   exit 1
 fi
 

@@ -3,6 +3,11 @@ name: Publish Packages
 on:
   workflow_call:
     inputs:
+      environment:
+        description: "GitHub Environment to bind this publish to (enables its protection rules). Optional."
+        required: false
+        type: string
+        default: ""
       packages:
         description: "Space-separated list of packages to publish (format: path|name|version)"
         required: true
@@ -16,8 +21,8 @@ on:
         description: "Organization name"
         required: true
         type: string
-      cred_project:
-        description: "Project name"
+      cred_env:
+        description: "Environment name"
         required: true
         type: string
     secrets:
@@ -31,6 +36,7 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
 
     steps:
       - uses: actions/checkout@v4
@@ -56,7 +62,7 @@ jobs:
         env:
           ACCESS_TOKEN: ${{ secrets.jwt_access_token }}
           ORGANIZATION_NAME: ${{ inputs.cred_org }}
-          PROJECT_NAME: ${{ inputs.cred_project }}
+          ENVIRONMENT_NAME: ${{ inputs.cred_env }}
           SET_LATEST: ${{ inputs.set_latest }}
           PACKAGES: ${{ inputs.packages }}
         run: |
@@ -79,7 +85,7 @@ jobs:
           # Call script (handles all logic: retry, error handling, summary)
           scripts/cred_publish.sh \
             -o "$ORGANIZATION_NAME" \
-            -P "$PROJECT_NAME" \
+            -E "$ENVIRONMENT_NAME" \
             -a "$ACCESS_TOKEN" \
             -p "$PACKAGES" \
             $SET_LATEST_FLAG

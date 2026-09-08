@@ -36,6 +36,7 @@ jobs:
       packages: ${{ needs.bump.outputs.bumped }}
       set_latest: ${{ vars.SET_LATEST == 'false' && false || true }}
       cred_org: ${{ vars.CRED_ORG }}
-      cred_project: ${{ vars.CRED_PROJECT }}
+      # CRED_PROJECT is the pre-rename variable name, still read as a fallback.
+      cred_env: ${{ vars.CRED_ENV || vars.CRED_PROJECT }}
     secrets:
       jwt_access_token: ${{ secrets.JWT_ACCESS_TOKEN }}
