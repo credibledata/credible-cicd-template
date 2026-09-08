@@ -41,7 +41,7 @@ This CI/CD pipeline automatically:
 Before using this template, ensure you have:
 - A GitHub repository (or use "Use this template" button)
 - Admin access to the repository
-- Access to your Credible organization and project
+- Access to your Credible organization and environment
 - Packages organized under a `packages/` directory
 
 ## 📖 Table of Contents
@@ -246,8 +246,11 @@ Add the following variables:
 1. **`CRED_ORG`**
    - Value: Your Credible organization name
 
-2. **`CRED_PROJECT`**
-   - Value: Your Credible project name
+2. **`CRED_ENV`**
+   - Value: Your Credible environment name
+   - `CRED_PROJECT` is the pre-rename name for this variable. Repositories
+     created before the rename keep working, because `deploy.yaml` falls back
+     to it, but new repositories should set `CRED_ENV`.
 
 3. **`SET_LATEST`** (optional)
    - Value: `true` or `false`
@@ -337,7 +340,7 @@ jobs:
       packages: ${{ needs.bump.outputs.bumped }}
       set_latest: ${{ vars.SET_LATEST == 'false' && false || true }}
       cred_org: ${{ vars.CRED_ORG }}
-      cred_project: ${{ vars.CRED_PROJECT }}
+      cred_env: ${{ vars.CRED_ENV || vars.CRED_PROJECT }}
     secrets:
       jwt_access_token: ${{ secrets.JWT_ACCESS_TOKEN }}
 ```
@@ -367,8 +370,8 @@ on:
         description: "Organization name"
         required: true
         type: string
-      cred_project:
-        description: "Project name"
+      cred_env:
+        description: "Environment name"
         required: true
         type: string
     secrets:
@@ -407,7 +410,7 @@ jobs:
         env:
           ACCESS_TOKEN: ${{ secrets.jwt_access_token }}
           ORGANIZATION_NAME: ${{ inputs.cred_org }}
-          PROJECT_NAME: ${{ inputs.cred_project }}
+          ENVIRONMENT_NAME: ${{ inputs.cred_env }}
           SET_LATEST: ${{ inputs.set_latest }}
           PACKAGES: ${{ inputs.packages }}
         run: |
@@ -433,7 +436,7 @@ jobs:
           # Call script (handles all logic: retry, error handling, summary)
           scripts/cred_publish.sh \
             -o "$ORGANIZATION_NAME" \
-            -P "$PROJECT_NAME" \
+            -E "$ENVIRONMENT_NAME" \
             -a "$ACCESS_TOKEN" \
             -p "$PACKAGES" \
             $SET_LATEST_FLAG
@@ -619,7 +622,7 @@ credentials/
 
 **Solutions**:
 - Verify `JWT_ACCESS_TOKEN` is valid and not expired
-- Check `CRED_ORG` and `CRED_PROJECT` variables are correct
+- Check `CRED_ORG` and `CRED_ENV` variables are correct
 - Ensure package name in `publisher.json` matches Credible requirements
 - Review the publish script logs for specific error messages
 

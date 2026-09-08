@@ -58,6 +58,25 @@ jobs:
           set -Eeuo pipefail
           chmod +x scripts/detect_changed_packages.py scripts/bump_versions.py
 
+          # Split a |||-delimited list into pkg_array.
+          # IFS cannot do this: it treats its value as a set of single
+          # characters, so IFS='|||' splits on each '|' and would break any
+          # path containing one.
+          split_pkgs() {
+            local rest="$1" item
+            pkg_array=()
+            while [ -n "$rest" ]; do
+              if [[ "$rest" == *"|||"* ]]; then
+                item="${rest%%|||*}"
+                rest="${rest#*|||}"
+              else
+                item="$rest"
+                rest=""
+              fi
+              [ -n "$item" ] && pkg_array+=("$item")
+            done
+          }
+
           base="${{ github.event.before }}"
           head="${{ github.sha }}"
 
@@ -84,8 +103,7 @@ jobs:
           bumped=""
           if [ -n "$to_bump" ]; then
             echo "Bumping versions for: $to_bump"
-            # Split on ||| delimiter to handle spaces in paths
-            IFS='|||' read -ra pkg_array <<< "$to_bump"
+            split_pkgs "$to_bump"
             bumped_list=()
             for pkg in "${pkg_array[@]}"; do
               [ -z "$pkg" ] && continue
@@ -100,8 +118,7 @@ jobs:
 
           # Combine bumped + already bumped for deployment
           if [ -n "$already_bumped" ]; then
-            # Split on ||| delimiter to handle spaces in paths
-            IFS='|||' read -ra pkg_array <<< "$already_bumped"
+            split_pkgs "$already_bumped"
             for pkg in "${pkg_array[@]}"; do
               [ -z "$pkg" ] && continue
               # Read current version from publisher.json
